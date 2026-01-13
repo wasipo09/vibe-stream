@@ -1,0 +1,9 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* A little dark mode background fix */
+body {
+    background-color: #111827; 
+    color: white;
+}
