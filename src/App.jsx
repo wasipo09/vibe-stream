@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, MicOff, MessageSquare, Gamepad2, Volume2, VolumeX, DollarSign, Clock, Trash2, Users, Settings, X } from 'lucide-react';
+import { Mic, MicOff, MessageSquare, Gamepad2, Volume2, VolumeX, DollarSign, Clock, Trash2, Users, Settings, X, Database, Zap, Calendar, User } from 'lucide-react';
 import OpenAI from 'openai';
+import { db, createNewViewer } from './db'; 
 
-// 🔒 SECURE KEY LOADING
 const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
 
 const openai = new OpenAI({
@@ -15,8 +15,6 @@ const INPUT_LANGUAGES = {
   ja: { label: "Japanese", code: "ja-JP", flag: "🇯🇵" },
   th: { label: "Thai", code: "th-TH", flag: "🇹🇭" }
 };
-
-const NAMES = ["xX_Slayer", "Mochi_San", "Somchai_99", "Glitch_Boi", "Kawaii_Dev", "Bangkok_Wolf", "Retro_Fan", "NoobMaster", "Stream_Sniper", "Cozy_Bear", "Anon_77", "Kira_Kira"];
 
 const RANDOM_TOPICS = [
     "arguing about pizza toppings",
@@ -46,32 +44,71 @@ const playDonationSound = () => {
     } catch (e) { console.error(e); }
 };
 
-const generateViewers = (count, toxicityLevel) => {
-  const trollCount = Math.floor(count * (toxicityLevel / 100));
-  const fanCount = count - trollCount;
-
-  const trolls = Array.from({ length: trollCount }).map((_, i) => ({
-    id: `troll_${i}`,
-    name: NAMES[Math.floor(Math.random() * NAMES.length)] + "_Troll",
-    color: "text-red-500",
-    persona: { type: "Troll", prompts: "Toxic, sarcastic, rude, makes fun of gameplay, uses 'L', 'KEKW'" }
-  }));
-
-  const fans = Array.from({ length: fanCount }).map((_, i) => ({
-    id: `fan_${i}`,
-    name: NAMES[Math.floor(Math.random() * NAMES.length)] + Math.floor(Math.random() * 100),
-    color: ["text-blue-400", "text-green-400", "text-purple-400", "text-yellow-400"][Math.floor(Math.random() * 4)],
-    persona: { type: "Fan", prompts: "Supportive, uses emojis, calls streamer 'you', asks questions." }
-  }));
-
-  return [...trolls, ...fans].sort(() => 0.5 - Math.random());
-};
-
 const formatTime = (seconds) => {
     const h = Math.floor(seconds / 3600).toString().padStart(2, '0');
     const m = Math.floor((seconds % 3600) / 60).toString().padStart(2, '0');
     const s = (seconds % 60).toString().padStart(2, '0');
     return `${h}:${m}:${s}`;
+};
+
+// --- NEW COMPONENT: VIEWER SOUL CARD ---
+const ViewerProfileCard = ({ viewer, position }) => {
+    if (!viewer) return null;
+
+    // Calculate XP progress to next level
+    const xpForNextLevel = 100;
+    const currentLevelProgress = viewer.xp % 100;
+
+    return (
+        <div 
+            className="fixed z-50 bg-gray-900/95 backdrop-blur-md border border-purple-500/30 p-4 rounded-xl shadow-2xl w-64 text-left pointer-events-none animate-in fade-in zoom-in-95 duration-200"
+            style={{ 
+                top: position.y + 10, 
+                left: position.x + 10 
+            }}
+        >
+            <div className="flex items-center gap-3 mb-3 border-b border-gray-700 pb-2">
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center bg-gray-800 ${viewer.color}`}>
+                    <User size={20} />
+                </div>
+                <div>
+                    <h3 className={`font-bold text-lg ${viewer.color}`}>{viewer.name}</h3>
+                    <div className="text-xs text-gray-400 flex items-center gap-1">
+                        <span className="bg-gray-800 px-1 rounded border border-gray-600">{viewer.type}</span>
+                        <span>• First seen today</span>
+                    </div>
+                </div>
+            </div>
+
+            <div className="space-y-3">
+                {/* Level Progress */}
+                <div>
+                    <div className="flex justify-between text-xs mb-1 text-gray-300">
+                        <span className="font-bold">Level {viewer.level}</span>
+                        <span>{currentLevelProgress} / 100 XP</span>
+                    </div>
+                    <div className="w-full bg-gray-800 h-2 rounded-full overflow-hidden">
+                        <div 
+                            className="bg-gradient-to-r from-purple-500 to-blue-500 h-full transition-all duration-500" 
+                            style={{ width: `${currentLevelProgress}%` }}
+                        ></div>
+                    </div>
+                </div>
+
+                {/* Persona / Memory */}
+                <div className="bg-gray-800/50 p-2 rounded text-xs text-gray-300 border border-gray-700">
+                    <div className="flex items-center gap-1 text-purple-300 font-bold mb-1">
+                        <Zap size={10} /> SOUL / VIBE
+                    </div>
+                    <p className="italic opacity-80 leading-relaxed">"{viewer.persona.prompts}"</p>
+                </div>
+                
+                <div className="flex items-center gap-1 text-[10px] text-gray-500 justify-end">
+                    <Database size={10} /> ID: {viewer.id}
+                </div>
+            </div>
+        </div>
+    );
 };
 
 const StreamSimulator = () => {
@@ -85,8 +122,16 @@ const StreamSimulator = () => {
   const [uptime, setUptime] = useState(0);
   const [viewerCount, setViewerCount] = useState(1240);
   const [showSettings, setShowSettings] = useState(false);
+  
+  // DB State
+  const [viewers, setViewers] = useState([]); 
+  const viewersRef = useRef([]); 
+  const [dbStatus, setDbStatus] = useState("loading");
 
-  // --- GOD MODE SETTINGS ---
+  // Hover State
+  const [hoveredViewer, setHoveredViewer] = useState(null);
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+
   const [settings, setSettings] = useState({
       toxicity: 20,       
       chatSpeed: 1000,    
@@ -96,18 +141,44 @@ const StreamSimulator = () => {
 
   const recognitionRef = useRef(null);
   const silenceTimer = useRef(null);
-  const viewersRef = useRef([]); 
   const lastActivityRef = useRef(Date.now()); 
   const isProcessingRef = useRef(false);
-  
-  // ⚡ FIX: Ref for scrolling
   const chatEndRef = useRef(null);
 
   useEffect(() => {
-    viewersRef.current = generateViewers(6, settings.toxicity);
-  }, [settings.toxicity]);
+    const initDB = async () => {
+        try {
+            const count = await db.viewers.count();
+            if (count === 0) {
+                const newViewers = Array.from({ length: 6 }).map(() => createNewViewer(settings.toxicity));
+                await db.viewers.bulkAdd(newViewers);
+                console.log("Creating new world...");
+            }
+            const loadedViewers = await db.viewers.toArray();
+            setViewers(loadedViewers);
+            viewersRef.current = loadedViewers; 
+            setDbStatus("ready");
+        } catch (error) {
+            console.error("DB Error:", error);
+            setDbStatus("error");
+        }
+    };
+    initDB();
+  }, []);
 
-  // ⚡ FIX: Scroll to bottom whenever 'chat' state changes
+  const awardXP = async (viewerName) => {
+      const viewer = viewersRef.current.find(v => v.name === viewerName);
+      if (!viewer) return;
+
+      const newXP = viewer.xp + 10;
+      const newLevel = Math.floor(newXP / 100) + 1; 
+      const updatedViewer = { ...viewer, xp: newXP, level: newLevel };
+
+      viewersRef.current = viewersRef.current.map(v => v.name === viewerName ? updatedViewer : v);
+      setViewers(prev => prev.map(v => v.name === viewerName ? updatedViewer : v));
+      await db.viewers.update(viewer.id, { xp: newXP, level: newLevel });
+  };
+
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chat]);
@@ -126,21 +197,12 @@ const StreamSimulator = () => {
     return () => clearInterval(interval);
   }, [isLive]);
 
-  // --- DEAD AIR LOGIC (Improved) ---
   useEffect(() => {
     const heartbeat = setInterval(() => {
         if (!isLive || isProcessingRef.current) return;
         const timeSinceLastActivity = Date.now() - lastActivityRef.current;
-        
-        // Check if silent for > 15 seconds
         if (timeSinceLastActivity > 15000) {
-            // ⚡ FIX: 60% chance to SKIP this cycle. 
-            // This prevents rhythmic spam. Sometimes silence is just silence.
-            if (Math.random() > 0.4) {
-                console.log("Dead Air detected... but staying quiet for realism.");
-                return;
-            }
-
+            if (Math.random() > 0.4) return; 
             triggerDeadAirChat();
             lastActivityRef.current = Date.now(); 
         }
@@ -203,7 +265,7 @@ const StreamSimulator = () => {
       setIsLive(true);
       lastActivityRef.current = Date.now(); 
       setChat([]); 
-      addSystemMessage(`🔴 STREAM STARTED (Toxicity: ${settings.toxicity}%)`);
+      addSystemMessage(`🔴 STREAM STARTED - Viewers loaded from Database`);
     }
   };
 
@@ -227,19 +289,18 @@ const StreamSimulator = () => {
     isProcessingRef.current = true;
     
     try {
+      if (viewersRef.current.length === 0) throw new Error("No viewers loaded");
+      
       const activeViewers = viewersRef.current.sort(() => 0.5 - Math.random()).slice(0, 3);
       
       const systemPrompt = `
         ROLE: Twitch Chat Simulator.
         USER: Streamer. AI: Audience.
         CONTEXT: Playing "${gameContext}".
-        
         RULES: 
         1. Generate 3 distinct messages.
-        2. ENSURE VARIETY: One positive, one sarcastic/troll, one random/question.
-        3. Do NOT have them say the same thing.
-        4. Speak TO the streamer.
-        5. Keep it short and slangy.
+        2. Speak TO the streamer.
+        3. Keep it short.
       `;
       
       await callOpenAI(systemPrompt, activeViewers, text, true); 
@@ -258,11 +319,12 @@ const StreamSimulator = () => {
     isProcessingRef.current = true;
 
     try {
-      // ⚡ FIX: Randomize how many people speak during dead air (1 or 2, not always 2)
+      if (viewersRef.current.length === 0) return;
+      
       const count = Math.random() > 0.5 ? 1 : 2;
       const activeViewers = viewersRef.current.sort(() => 0.5 - Math.random()).slice(0, count);
-      
       const randomTopic = RANDOM_TOPICS[Math.floor(Math.random() * RANDOM_TOPICS.length)];
+      
       const systemPrompt = `
         ROLE: Twitch Chat Sim.
         SCENARIO: Streamer is silent (15s+).
@@ -273,10 +335,10 @@ const StreamSimulator = () => {
     } catch (error) { console.error(error); } finally { isProcessingRef.current = false; }
   };
 
-  const callOpenAI = async (systemInstruction, viewers, userText, allowDonations) => {
+  const callOpenAI = async (systemInstruction, currentActiveViewers, userText, allowDonations) => {
     const userPrompt = `
       Input: "${userText}"
-      Personas: ${JSON.stringify(viewers.map(v => ({ name: v.name, persona: v.persona.prompts })))}
+      Personas: ${JSON.stringify(currentActiveViewers.map(v => ({ name: v.name, persona: v.persona.prompts })))}
       RETURN JSON ARRAY: [{ "user": "EXACT_NAME", "text": "msg" }]
     `;
 
@@ -299,23 +361,28 @@ const StreamSimulator = () => {
     }
 
     parsed.forEach((msg, i) => {
-      // ⚡ FIX: Add a small random jitter to the timing so they don't appear perfectly linear
       const randomJitter = Math.floor(Math.random() * 500); 
       const delay = (i * settings.chatSpeed) + randomJitter;
 
       setTimeout(() => {
-        const viewer = viewersRef.current.find(v => v.name === msg.user) 
-                    || viewersRef.current.find(v => msg.user.includes(v.name))
-                    || viewersRef.current[i % viewersRef.current.length];
+        const viewer = viewersRef.current.find(v => v.name === msg.user) || currentActiveViewers[0];
+        
+        if (viewer) {
+            awardXP(viewer.name);
 
-        if (donationAmount && i === 0) {
-            msg.donation = donationAmount; 
-            playDonationSound();
-            setLatestDonation({ user: msg.user, amount: donationAmount, text: msg.text });
+            if (donationAmount && i === 0) {
+                msg.donation = donationAmount; 
+                playDonationSound();
+                setLatestDonation({ user: msg.user, amount: donationAmount, text: msg.text });
+            }
+
+            setChat(prev => [...prev, { 
+                ...msg, 
+                color: viewer.color || "text-gray-400",
+                level: viewer.level || 1,
+                originalViewer: viewer // Attach full object for hover
+            }]);
         }
-
-        setChat(prev => [...prev, { ...msg, color: viewer ? viewer.color : "text-gray-400" }]);
-        // Scroll is now handled by useEffect
       }, delay); 
     });
   };
@@ -324,9 +391,24 @@ const StreamSimulator = () => {
     setChat(prev => [...prev, { user: "SYSTEM", text, color: "text-gray-500", isSystem: true }]);
   };
 
+  const resetWorld = async () => {
+    if(confirm("Are you sure? This will delete all viewer memories and levels.")) {
+        await db.viewers.clear();
+        window.location.reload();
+    }
+  };
+
+  const handleMouseEnter = (viewer, e) => {
+      setHoveredViewer(viewer);
+      setMousePos({ x: e.clientX, y: e.clientY });
+  };
+
   return (
     <div className="min-h-screen bg-gray-900 text-white font-sans flex flex-col items-center justify-center p-4 relative overflow-hidden">
       
+      {/* HOVER CARD */}
+      {hoveredViewer && <ViewerProfileCard viewer={hoveredViewer} position={mousePos} />}
+
       {latestDonation && (
         <div className="absolute top-20 z-50 animate-bounce-in">
             <div className="bg-gradient-to-r from-green-500 to-emerald-600 p-1 rounded-xl shadow-2xl border-2 border-yellow-300">
@@ -348,7 +430,10 @@ const StreamSimulator = () => {
                 <div className={`w-3 h-3 rounded-full ${isLive ? 'bg-red-500 animate-pulse' : 'bg-gray-500'}`}></div>
                 <div>
                     <h1 className="text-xl font-bold tracking-wider leading-none">VIBE STREAM</h1>
-                    <span className="text-xs text-gray-400 font-mono">{isLive ? formatTime(uptime) : "OFFLINE"}</span>
+                    <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-400 font-mono">{isLive ? formatTime(uptime) : "OFFLINE"}</span>
+                        {dbStatus === "ready" && <span className="text-xs bg-green-900 text-green-300 px-1 rounded border border-green-700">DB CONNECTED</span>}
+                    </div>
                 </div>
             </div>
 
@@ -361,14 +446,10 @@ const StreamSimulator = () => {
                     <Users size={18} className="text-blue-400" />
                     <span className="font-mono font-bold text-lg">{viewerCount.toLocaleString()}</span>
                 </div>
-                <div className="h-6 w-px bg-gray-600"></div>
-                <button onClick={() => setEnableTTS(!enableTTS)} className={`p-2 rounded-lg border transition-all ${enableTTS ? 'bg-purple-600 border-purple-400 text-white' : 'bg-gray-700 border-gray-600 text-gray-400'}`}>
-                    {enableTTS ? <Volume2 size={18}/> : <VolumeX size={18}/>}
-                </button>
             </div>
         </div>
 
-        {/* SETTINGS PANEL */}
+        {/* SETTINGS */}
         {showSettings && (
             <div className="bg-gray-800 p-4 rounded-xl border border-gray-700 animate-in fade-in slide-in-from-top-2">
                 <div className="flex justify-between items-center mb-4">
@@ -389,40 +470,9 @@ const StreamSimulator = () => {
                         />
                     </div>
                     <div>
-                        <div className="flex justify-between text-xs mb-1">
-                            <span className="text-blue-400">Chat Delay</span>
-                            <span>{settings.chatSpeed}ms</span>
-                        </div>
-                        <input 
-                            type="range" min="200" max="3000" step="100"
-                            value={settings.chatSpeed} 
-                            onChange={(e) => setSettings({...settings, chatSpeed: parseInt(e.target.value)})}
-                            className="w-full accent-blue-500 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
-                        />
-                    </div>
-                    <div>
-                        <div className="flex justify-between text-xs mb-1">
-                            <span className="text-green-400">Base Donation Chance</span>
-                            <span>{settings.baseDonation}%</span>
-                        </div>
-                        <input 
-                            type="range" min="0" max="50" 
-                            value={settings.baseDonation} 
-                            onChange={(e) => setSettings({...settings, baseDonation: parseInt(e.target.value)})}
-                            className="w-full accent-green-500 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
-                        />
-                    </div>
-                    <div>
-                        <div className="flex justify-between text-xs mb-1">
-                            <span className="text-purple-400">AI Creativity</span>
-                            <span>{settings.creativity}</span>
-                        </div>
-                        <input 
-                            type="range" min="0.1" max="1.5" step="0.1"
-                            value={settings.creativity} 
-                            onChange={(e) => setSettings({...settings, creativity: parseFloat(e.target.value)})}
-                            className="w-full accent-purple-500 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
-                        />
+                         <button onClick={resetWorld} className="mt-4 w-full flex items-center justify-center gap-2 bg-red-900/50 hover:bg-red-800 border border-red-700 text-red-200 py-2 rounded-lg text-xs font-bold transition">
+                            <Database size={14} /> RESET WORLD (DELETE SAVE)
+                         </button>
                     </div>
                 </div>
             </div>
@@ -456,8 +506,9 @@ const StreamSimulator = () => {
         </div>
       </div>
 
-      {/* CONTENT */}
+      {/* MAIN CONTENT */}
       <div className="w-full max-w-4xl grid grid-cols-1 md:grid-cols-3 gap-6 h-[600px]">
+        {/* CAMERA */}
         <div className="md:col-span-2 bg-black rounded-xl border border-gray-800 relative flex flex-col items-center justify-center overflow-hidden">
           {!isLive ? (
             <div className="text-center text-gray-500">
@@ -486,6 +537,7 @@ const StreamSimulator = () => {
           )}
         </div>
 
+        {/* CHAT */}
         <div className="bg-gray-900 border border-gray-800 rounded-xl flex flex-col h-full shadow-2xl overflow-hidden relative">
             <div className="bg-gray-800 p-3 border-b border-gray-700 font-bold text-sm flex items-center justify-between">
                 <span>CHAT</span>
@@ -503,7 +555,19 @@ const StreamSimulator = () => {
                             <span className="italic font-mono text-xs text-gray-500">{msg.text}</span>
                         ) : (
                             <div className={`${msg.donation ? 'bg-green-900/20 p-2 rounded border border-green-800' : ''}`}>
-                                <span className={`font-bold ${msg.color} cursor-pointer hover:underline`}>{msg.user}</span>
+                                <span className="text-[10px] bg-gray-700 text-gray-300 px-1 rounded mr-2 font-mono">
+                                    Lvl {msg.level || 1}
+                                </span>
+                                
+                                {/* HOVERABLE USERNAME */}
+                                <span 
+                                    className={`font-bold ${msg.color} cursor-pointer hover:underline relative`}
+                                    onMouseEnter={(e) => handleMouseEnter(msg.originalViewer, e)}
+                                    onMouseLeave={() => setHoveredViewer(null)}
+                                >
+                                    {msg.user}
+                                </span>
+
                                 {msg.donation && <span className="ml-2 text-xs bg-green-600 text-white px-1 rounded">{msg.donation}</span>}
                                 <span className="text-gray-400 mx-1">:</span>
                                 <span className={msg.donation ? "text-green-200 font-bold" : "text-gray-200"}>{msg.text}</span>
@@ -511,7 +575,6 @@ const StreamSimulator = () => {
                         )}
                     </div>
                 ))}
-                {/* ⚡ FIX: Invisible element to force scroll */}
                 <div ref={chatEndRef} />
             </div>
             <div className="p-3 bg-gray-800 border-t border-gray-700">
