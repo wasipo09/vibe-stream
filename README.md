@@ -1,22 +1,21 @@
 # 🎙️ Vibe Stream: The AI Chat Simulator
 
-**Vibe Stream** is a React-based "Stream Simulator" that generates a fake, hyper-realistic live audience. Using the OpenAI API and browser-native Speech Recognition, the chat listens to your voice, reacts to your gameplay context, and even starts drama when you go silent.
+**Vibe Stream** is a React-based "Stream Simulator" that generates a fake, hyper-realistic live audience. Using the OpenAI API and browser-native Speech Recognition, the chat listens to your voice, reacts to your gameplay context, and builds a long-term memory of your history.
 
-![Version](https://img.shields.io/badge/version-2.1-purple)
+![Version](https://img.shields.io/badge/version-2.3-purple)
 ![Tech](https://img.shields.io/badge/tech-React%20%7C%20Vite%20%7C%20DexieDB%20%7C%20GPT--4o--mini-blue)
 
 ## ✨ Key Features
 
-* **🧠 Persistence (New!):** Viewers now have a "Soul". They live in your browser's local database. If you close the tab and come back tomorrow, the *same* viewers (Mochi_San, Slayer, etc.) will be there to welcome you back.
-* **📈 RPG Leveling:** Viewers gain **XP** for every message they send. Watch them grow from Level 1 Noobs to Level 50 Veterans.
-* **🃏 Soul Cards:** **Hover** over any username in chat to see their stats, level progress, and their hidden personality prompt (e.g., "Secretly loves anime").
-* **🗣️ Real-Time Interaction:** Speak into your mic, and AI personas react instantly using **GPT-4o-mini**.
-* **🎛️ God Mode (Settings):** Tune the simulation in real-time:
-    * **Toxicity:** 0% (Cozy) to 100% (Roast Session).
-    * **Speed:** Chat delay control.
-    * **Reset World:** A "Nuke" button to wipe the database and generate a fresh audience.
-* **🤫 Dead Air Engine:** If you stay silent for >15 seconds, the chat awkwardly goes silent or starts side conversations.
-* **💰 Smart Donations:** Answering questions increases engagement, triggering donation rolls (pure math probability, not AI hallucinations).
+* **🧠 The Lore System (New!):** The chat has **Long-Term Memory**. If you admit to liking pineapple on pizza in Stream #1, they will roast you for it in Stream #5.
+    * **Auto-Summarization:** When you end a stream, the AI analyzes your transcript and saves a "Core Memory" to the database.
+    * **Context Injection:** Future streams load these memories so the chat stays relevant.
+* **💾 Persistence:** Viewers live in your browser's local database. Mochi_San will be there tomorrow with the same XP and level.
+* **📈 RPG Leveling:** Viewers gain **XP** for chatting. Watch them grow from Level 1 to Level 50.
+* **🃏 Soul Cards:** **Hover** over any username to see their stats, level, and hidden persona.
+* **🎛️ God Mode:** Tune the simulation (Toxicity, Speed, Reset World) in real-time.
+* **📊 Stream Reports:** Get a summary of your earnings, MVP viewer, and new memories unlocked after every session.
+* **💰 Smart Donations:** Answering questions triggers donation rolls based on mathematical probability.
 
 ---
 
@@ -34,7 +33,7 @@
     cd vibe-stream
     ```
 
-2.  **Install Dependencies** (Includes Database)
+2.  **Install Dependencies**
     ```bash
     npm install
     ```
@@ -55,27 +54,29 @@
 ## 🎮 How to Play
 
 1.  **Go Live:** Click the purple button.
-2.  **The "Soul" Check:** You will see `DB CONNECTED` at the top. This means your viewers are being loaded from the hard drive, not generated randomly.
-3.  **Level Up:** Talk to your chat. As they respond, notice their Level (Lvl 1) badge. Keep streaming to level them up.
-4.  **Check Stats:** Hover your mouse over a name to see their "Soul Card".
-5.  **Reset:** Want a new audience? Click the **Gear Icon ⚙️** -> **RESET WORLD**. This wipes the save file and refreshes the page.
+2.  **Create Lore:** Say something controversial or funny (e.g., *"I think I'm the best gamer alive"*).
+3.  **End Stream:** Click the Red Button.
+4.  **Unlock Memory:** Watch the Summary Modal. A purple box will appear: **"Core Memory Unlocked: Streamer thinks they are a god."**
+5.  **Next Session:** Start a new stream. Look for the **[ 1 MEMORIES ]** badge. The chat will now reference that memory.
 
 ---
 
 ## 📜 Changelog
 
-### v2.1 (Current) - The "Soul" Update
-* **Persistence:** Integrated `Dexie.js` (IndexedDB) to save viewers permanently.
-* **RPG Mechanics:** Added XP and Leveling system.
-* **UI:** Added "Soul Cards" (Hover popups) showing viewer stats and hidden personas.
-* **Admin:** Added "Reset World" button to settings.
+### v2.3 (Current) - The "Evolution" Update
+* **Lore System:** Implemented Global Stream Memory.
+* **Auto-Summarization:** AI generates facts from transcripts upon stream end.
+* **Context Injection:** Previous memories are fed into the chat context for continuity.
+* **Stream Summary:** UI updated to show "New Memories" alongside stats.
+
+### v2.1 - The "Soul" Update
+* **Persistence:** Integrated `Dexie.js` to save viewers.
+* **RPG Mechanics:** XP and Leveling system.
+* **Soul Cards:** Hover UI for viewer stats.
 
 ### v1.3 - The Intelligence Update
 * **Engine:** Upgraded to **GPT-4o-mini**.
-* **Realism:** Improved Dead Air randomization and fixed scroll glitches.
-
-### v1.0 - The God Mode Update
-* **Settings:** Toxicity, Speed, and Donation sliders.
+* **Realism:** Improved Dead Air randomization.
 
 ---
 
