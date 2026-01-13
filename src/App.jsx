@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, MicOff, Send, MessageSquare, AlertCircle, Gamepad2, Volume2, VolumeX, DollarSign, Clock, Sparkles, Trash2, Users } from 'lucide-react';
+import { Mic, MicOff, MessageSquare, Gamepad2, Volume2, VolumeX, DollarSign, Clock, Trash2, Users, Settings, X } from 'lucide-react';
 import OpenAI from 'openai';
 
 // 🔒 SECURE KEY LOADING
@@ -16,11 +16,10 @@ const INPUT_LANGUAGES = {
   th: { label: "Thai", code: "th-TH", flag: "🇹🇭" }
 };
 
-const NAMES = ["xX_Slayer", "Mochi_San", "Somchai_99", "Glitch_Boi", "Kawaii_Dev", "Bangkok_Wolf", "Retro_Fan", "NoobMaster", "Stream_Sniper", "Cozy_Bear"];
+const NAMES = ["xX_Slayer", "Mochi_San", "Somchai_99", "Glitch_Boi", "Kawaii_Dev", "Bangkok_Wolf", "Retro_Fan", "NoobMaster", "Stream_Sniper", "Cozy_Bear", "Anon_77", "Kira_Kira"];
 
 const RANDOM_TOPICS = [
     "arguing about pizza toppings",
-    "asking if anyone saw the latest anime episode",
     "complaining about school/work",
     "talking about another famous streamer",
     "discussing the game meta",
@@ -47,21 +46,25 @@ const playDonationSound = () => {
     } catch (e) { console.error(e); }
 };
 
-const generateViewers = (count) => {
-  const archetypes = [
-    { type: "Fan", prompts: "Very supportive. Refers to the streamer as 'you' or 'streamer'. Uses emojis." },
-    { type: "Troll", prompts: "Critical, sarcastic. Makes fun of the streamer's gameplay." },
-    { type: "Newbie", prompts: "Confused. Asks questions ABOUT the game or the stream." },
-    { type: "Hype", prompts: "Excited. Reacts to big moments. Uses caps." }
-  ];
-  const colors = ["text-red-400", "text-blue-400", "text-green-400", "text-purple-400", "text-yellow-400", "text-pink-400"];
+const generateViewers = (count, toxicityLevel) => {
+  const trollCount = Math.floor(count * (toxicityLevel / 100));
+  const fanCount = count - trollCount;
 
-  return Array.from({ length: count }).map((_, i) => ({
-    id: i,
-    name: NAMES[Math.floor(Math.random() * NAMES.length)] + Math.floor(Math.random() * 100),
-    color: colors[Math.floor(Math.random() * colors.length)],
-    persona: archetypes[Math.floor(Math.random() * archetypes.length)]
+  const trolls = Array.from({ length: trollCount }).map((_, i) => ({
+    id: `troll_${i}`,
+    name: NAMES[Math.floor(Math.random() * NAMES.length)] + "_Troll",
+    color: "text-red-500",
+    persona: { type: "Troll", prompts: "Toxic, sarcastic, rude, makes fun of gameplay, uses 'L', 'KEKW'" }
   }));
+
+  const fans = Array.from({ length: fanCount }).map((_, i) => ({
+    id: `fan_${i}`,
+    name: NAMES[Math.floor(Math.random() * NAMES.length)] + Math.floor(Math.random() * 100),
+    color: ["text-blue-400", "text-green-400", "text-purple-400", "text-yellow-400"][Math.floor(Math.random() * 4)],
+    persona: { type: "Fan", prompts: "Supportive, uses emojis, calls streamer 'you', asks questions." }
+  }));
+
+  return [...trolls, ...fans].sort(() => 0.5 - Math.random());
 };
 
 const formatTime = (seconds) => {
@@ -82,6 +85,15 @@ const StreamSimulator = () => {
   const [latestDonation, setLatestDonation] = useState(null);
   const [uptime, setUptime] = useState(0);
   const [viewerCount, setViewerCount] = useState(1240);
+  const [showSettings, setShowSettings] = useState(false);
+
+  // --- GOD MODE SETTINGS ---
+  const [settings, setSettings] = useState({
+      toxicity: 20,       
+      chatSpeed: 1000,    
+      baseDonation: 1, // Now strictly 1% chance
+      creativity: 0.8     
+  });
 
   const recognitionRef = useRef(null);
   const silenceTimer = useRef(null);
@@ -89,8 +101,8 @@ const StreamSimulator = () => {
   const lastActivityRef = useRef(Date.now()); 
 
   useEffect(() => {
-    viewersRef.current = generateViewers(6);
-  }, []);
+    viewersRef.current = generateViewers(6, settings.toxicity);
+  }, [settings.toxicity]);
 
   useEffect(() => {
     let interval;
@@ -173,47 +185,55 @@ const StreamSimulator = () => {
       setIsLive(true);
       lastActivityRef.current = Date.now(); 
       setChat([]); 
-      addSystemMessage("🔴 STREAM STARTED");
+      addSystemMessage(`🔴 STREAM STARTED (Toxicity: ${settings.toxicity}%)`);
     }
   };
 
-  const calculateDonationChance = (userSpeech) => {
+  // --- 🎲 NEW MATH-BASED DONATION SYSTEM ---
+  const rollForDonation = (userSpeech) => {
+    // 1. Get Base Chance from Settings Slider (e.g. 1% -> 0.01)
+    let chance = settings.baseDonation / 100;
+    
+    // 2. Engagement Bonus
     const lowerSpeech = userSpeech.toLowerCase();
-    let chance = 0.01; 
     const engagementTriggers = ["yes", "no", "because", "i think", "thank you", "actually", "well"];
     if (engagementTriggers.some(trigger => lowerSpeech.startsWith(trigger))) {
-        chance = 0.30; 
+        chance += 0.20; // Add 20% bonus if engaging
     }
-    if (userSpeech.length > 50) chance += 0.10;
-    return chance;
+    
+    // 3. Roll the Dice
+    const roll = Math.random();
+    console.log(`Donation Roll: ${roll.toFixed(2)} vs Chance: ${chance.toFixed(2)}`);
+    
+    if (roll < chance) {
+        // Return random amount
+        const amounts = ["$5.00", "$10.00", "$20.00", "$50.00", "$4.20", "$69.00"];
+        return amounts[Math.floor(Math.random() * amounts.length)];
+    }
+    return null;
   };
 
-  // --- STRICTER PROMPTS HERE ---
   const processSpeechToAI = async (text) => {
     if (isProcessing) return;
     setIsProcessing(true);
     
     try {
       const activeViewers = viewersRef.current.sort(() => 0.5 - Math.random()).slice(0, 3);
-      const donationProb = calculateDonationChance(text);
-
+      
+      // We do NOT tell AI about donation chance anymore. We just ask for text.
       const systemPrompt = `
-        ROLE: You are the backend for a Twitch Chat Simulation.
-        SCENARIO: The USER input is the STREAMER speaking.
-        YOUR JOB: Generate 2-3 viewer chat messages reacting to the streamer.
+        ROLE: Twitch Chat Simulator.
+        USER: Streamer. AI: Audience.
+        CONTEXT: Playing "${gameContext}".
         
-        RULES:
-        1. YOU ARE THE AUDIENCE. You are NOT the streamer.
-        2. Speak TO the streamer (use "you", "he", "she", or "streamer").
-        3. Keep messages short, informal, internet-slang style.
-        4. Context: Streamer is playing "${gameContext}".
-        
-        DONATIONS:
-        - Chance: ${donationProb} (0-1).
-        - If donating, add "donation": "$20" to object.
+        RULES: 
+        1. Generate 3 distinct messages.
+        2. Use the EXACT usernames provided.
+        3. Speak TO the streamer.
+        4. Keep it short and slangy.
       `;
       
-      await callOpenAI(systemPrompt, activeViewers, text);
+      await callOpenAI(systemPrompt, activeViewers, text, true); // true = allow donations check
 
     } catch (error) {
       console.error("AI Error:", error);
@@ -230,53 +250,61 @@ const StreamSimulator = () => {
     try {
       const activeViewers = viewersRef.current.sort(() => 0.5 - Math.random()).slice(0, 2); 
       const randomTopic = RANDOM_TOPICS[Math.floor(Math.random() * RANDOM_TOPICS.length)];
-      
       const systemPrompt = `
-        ROLE: Twitch Chat Simulator.
-        SCENARIO: The streamer has been silent for 15+ seconds.
-        YOUR JOB: Generate viewer chatter.
-        
-        RULES:
-        1. Discuss this topic: "${randomTopic}".
-        2. Or ask "Is the streamer AFK?".
-        3. Do NOT pretend to be the streamer. Talk TO each other or ABOUT the streamer.
-        4. NO DONATIONS.
+        ROLE: Twitch Chat Sim.
+        SCENARIO: Streamer is silent (15s+).
+        TASK: Chat with each other about "${randomTopic}".
+        NO DONATIONS.
       `;
-      
-      await callOpenAI(systemPrompt, activeViewers, "Streamer is silent...");
+      await callOpenAI(systemPrompt, activeViewers, "Streamer is silent...", false); // false = no donations
     } catch (error) { console.error(error); } finally { setIsProcessing(false); }
   };
 
-  const callOpenAI = async (systemInstruction, viewers, userText) => {
+  const callOpenAI = async (systemInstruction, viewers, userText, allowDonations) => {
     const userPrompt = `
-      Streamer Said/Status: "${userText}"
-      
-      Generate responses for:
-      ${JSON.stringify(viewers.map(v => ({ name: v.name, persona: v.persona.prompts })))}
-      
-      RETURN JSON ARRAY: [{ "user": "name", "text": "message", "donation": "$5" (optional) }]
+      Input: "${userText}"
+      Personas: ${JSON.stringify(viewers.map(v => ({ name: v.name, persona: v.persona.prompts })))}
+      RETURN JSON ARRAY: [{ "user": "EXACT_NAME", "text": "msg" }]
     `;
 
     const completion = await openai.chat.completions.create({
       messages: [{ role: "system", content: systemInstruction }, { role: "user", content: userPrompt }],
       model: "gpt-3.5-turbo",
+      temperature: settings.creativity, 
     });
 
     const rawContent = completion.choices[0].message.content;
     const jsonMatch = rawContent.match(/\[.*\]/s) || rawContent.match(/\{.*\}/s);
     if (!jsonMatch) return;
     
-    const messages = JSON.parse(jsonMatch[0]);
-    (Array.isArray(messages) ? messages : []).forEach((msg, i) => {
+    let parsed = JSON.parse(jsonMatch[0]);
+    if (!Array.isArray(parsed)) parsed = [parsed];
+    
+    // --- 🎲 INJECT DONATION HERE ---
+    // If allowed, roll ONE dice for the whole batch
+    let donationAmount = null;
+    if (allowDonations) {
+        donationAmount = rollForDonation(userText);
+    }
+
+    parsed.forEach((msg, i) => {
       setTimeout(() => {
-        const viewer = viewersRef.current.find(v => v.name === msg.user) || viewersRef.current[0];
-        if (msg.donation) {
+        const viewer = viewersRef.current.find(v => v.name === msg.user) 
+                    || viewersRef.current.find(v => msg.user.includes(v.name))
+                    || viewersRef.current[i % viewersRef.current.length];
+
+        // If dice rolled a donation, give it to the FIRST message in the batch
+        let isDonation = false;
+        if (donationAmount && i === 0) {
+            isDonation = true;
+            msg.donation = donationAmount; // Attach to object
             playDonationSound();
-            setLatestDonation({ user: msg.user, amount: msg.donation, text: msg.text });
+            setLatestDonation({ user: msg.user, amount: donationAmount, text: msg.text });
         }
-        setChat(prev => [...prev, { ...msg, color: viewer.color }]);
+
+        setChat(prev => [...prev, { ...msg, color: viewer ? viewer.color : "text-gray-400" }]);
         scrollToBottom();
-      }, i * 1200);
+      }, i * settings.chatSpeed); 
     });
   };
 
@@ -317,7 +345,11 @@ const StreamSimulator = () => {
                 </div>
             </div>
 
-            <div className="flex items-center gap-6">
+            <div className="flex items-center gap-4">
+                <button onClick={() => setShowSettings(!showSettings)} className="text-gray-400 hover:text-white transition">
+                   <Settings size={20} className={showSettings ? "animate-spin-slow" : ""} />
+                </button>
+                <div className="h-6 w-px bg-gray-600"></div>
                 <div className="flex items-center gap-2 text-gray-300">
                     <Users size={18} className="text-blue-400" />
                     <span className="font-mono font-bold text-lg">{viewerCount.toLocaleString()}</span>
@@ -328,6 +360,66 @@ const StreamSimulator = () => {
                 </button>
             </div>
         </div>
+
+        {/* SETTINGS PANEL */}
+        {showSettings && (
+            <div className="bg-gray-800 p-4 rounded-xl border border-gray-700 animate-in fade-in slide-in-from-top-2">
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="font-bold text-gray-300 text-sm uppercase tracking-wider">Simulation Parameters</h3>
+                    <button onClick={() => setShowSettings(false)}><X size={16} className="text-gray-500 hover:text-white"/></button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <div className="flex justify-between text-xs mb-1">
+                            <span className="text-red-400">Toxicity (Trolls)</span>
+                            <span>{settings.toxicity}%</span>
+                        </div>
+                        <input 
+                            type="range" min="0" max="100" 
+                            value={settings.toxicity} 
+                            onChange={(e) => setSettings({...settings, toxicity: parseInt(e.target.value)})}
+                            className="w-full accent-red-500 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+                        />
+                    </div>
+                    <div>
+                        <div className="flex justify-between text-xs mb-1">
+                            <span className="text-blue-400">Chat Delay</span>
+                            <span>{settings.chatSpeed}ms</span>
+                        </div>
+                        <input 
+                            type="range" min="200" max="3000" step="100"
+                            value={settings.chatSpeed} 
+                            onChange={(e) => setSettings({...settings, chatSpeed: parseInt(e.target.value)})}
+                            className="w-full accent-blue-500 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+                        />
+                    </div>
+                    <div>
+                        <div className="flex justify-between text-xs mb-1">
+                            <span className="text-green-400">Base Donation Chance</span>
+                            <span>{settings.baseDonation}%</span>
+                        </div>
+                        <input 
+                            type="range" min="0" max="50" 
+                            value={settings.baseDonation} 
+                            onChange={(e) => setSettings({...settings, baseDonation: parseInt(e.target.value)})}
+                            className="w-full accent-green-500 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+                        />
+                    </div>
+                    <div>
+                        <div className="flex justify-between text-xs mb-1">
+                            <span className="text-purple-400">AI Creativity</span>
+                            <span>{settings.creativity}</span>
+                        </div>
+                        <input 
+                            type="range" min="0.1" max="1.5" step="0.1"
+                            value={settings.creativity} 
+                            onChange={(e) => setSettings({...settings, creativity: parseFloat(e.target.value)})}
+                            className="w-full accent-purple-500 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+                        />
+                    </div>
+                </div>
+            </div>
+        )}
 
         {/* CONTROLS */}
         <div className="flex flex-col md:flex-row gap-4 p-4 bg-gray-800/50 rounded-xl border border-gray-700">
