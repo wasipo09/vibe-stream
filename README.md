@@ -26,7 +26,7 @@
 
 1.  **Clone the Repository**
     ```bash
-    git clone [https://github.com/YOUR_USERNAME/stream-sim.git](https://github.com/YOUR_USERNAME/stream-sim.git)
+    git clone [https://github.com/wasipo09/stream-sim.git](https://github.com/wasipo09/stream-sim.git)
     cd stream-sim
     ```
 
@@ -84,11 +84,11 @@
 
 ---
 
-## 🔮 Roadmap (The "SAO" Project)
+## 🔮 Roadmap (The "dreality" Project)
 * [ ] **Persistence:** Local Database to remember viewers (Level up system).
 * [ ] **Vision:** AI sees your screen and reacts to gameplay visuals.
 * [ ] **Social Graph:** Viewers form relationships with each other.
 
 ---
 
-*Built with ❤️ by [Your Name]*
+*Built with ❤️ by wasipo09*

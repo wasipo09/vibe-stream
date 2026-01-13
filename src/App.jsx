@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, MicOff, Send, MessageSquare, AlertCircle, Gamepad2, Volume2, VolumeX, DollarSign, Clock, Sparkles } from 'lucide-react';
+import { Mic, MicOff, Send, MessageSquare, AlertCircle, Gamepad2, Volume2, VolumeX, DollarSign, Clock, Sparkles, Trash2, Users } from 'lucide-react';
 import OpenAI from 'openai';
 
 // 🔒 SECURE KEY LOADING
@@ -18,7 +18,6 @@ const INPUT_LANGUAGES = {
 
 const NAMES = ["xX_Slayer", "Mochi_San", "Somchai_99", "Glitch_Boi", "Kawaii_Dev", "Bangkok_Wolf", "Retro_Fan", "NoobMaster", "Stream_Sniper", "Cozy_Bear"];
 
-// Random topics for Dead Air to make it feel "real"
 const RANDOM_TOPICS = [
     "arguing about pizza toppings",
     "asking if anyone saw the latest anime episode",
@@ -50,10 +49,10 @@ const playDonationSound = () => {
 
 const generateViewers = (count) => {
   const archetypes = [
-    { type: "Fan", prompts: "supportive, loves the streamer" },
-    { type: "Troll", prompts: "sarcastic, rude, uses 'L', 'KEKW'" },
-    { type: "Newbie", prompts: "confused, asks dumb questions" },
-    { type: "Hype", prompts: "SHOUTING, EXCITED, CAPSLOCK" }
+    { type: "Fan", prompts: "Very supportive. Refers to the streamer as 'you' or 'streamer'. Uses emojis." },
+    { type: "Troll", prompts: "Critical, sarcastic. Makes fun of the streamer's gameplay." },
+    { type: "Newbie", prompts: "Confused. Asks questions ABOUT the game or the stream." },
+    { type: "Hype", prompts: "Excited. Reacts to big moments. Uses caps." }
   ];
   const colors = ["text-red-400", "text-blue-400", "text-green-400", "text-purple-400", "text-yellow-400", "text-pink-400"];
 
@@ -65,6 +64,13 @@ const generateViewers = (count) => {
   }));
 };
 
+const formatTime = (seconds) => {
+    const h = Math.floor(seconds / 3600).toString().padStart(2, '0');
+    const m = Math.floor((seconds % 3600) / 60).toString().padStart(2, '0');
+    const s = (seconds % 60).toString().padStart(2, '0');
+    return `${h}:${m}:${s}`;
+};
+
 const StreamSimulator = () => {
   const [isLive, setIsLive] = useState(false);
   const [transcript, setTranscript] = useState("");
@@ -74,6 +80,8 @@ const StreamSimulator = () => {
   const [gameContext, setGameContext] = useState("Just Chatting");
   const [enableTTS, setEnableTTS] = useState(false);
   const [latestDonation, setLatestDonation] = useState(null);
+  const [uptime, setUptime] = useState(0);
+  const [viewerCount, setViewerCount] = useState(1240);
 
   const recognitionRef = useRef(null);
   const silenceTimer = useRef(null);
@@ -84,21 +92,29 @@ const StreamSimulator = () => {
     viewersRef.current = generateViewers(6);
   }, []);
 
-  // --- DEAD AIR ENGINE (Chaos Mode) ---
+  useEffect(() => {
+    let interval;
+    if (isLive) {
+        interval = setInterval(() => {
+            setUptime(prev => prev + 1);
+            setViewerCount(prev => Math.max(0, prev + (Math.floor(Math.random() * 11) - 5)));
+        }, 1000);
+    } else {
+        setUptime(0);
+        setViewerCount(1240); 
+    }
+    return () => clearInterval(interval);
+  }, [isLive]);
+
   useEffect(() => {
     const heartbeat = setInterval(() => {
         if (!isLive || isProcessing) return;
-
         const timeSinceLastActivity = Date.now() - lastActivityRef.current;
-        
-        // Random check every 15s of silence
         if (timeSinceLastActivity > 15000) {
-            console.log("Triggering Random Dead Air Chat...");
             triggerDeadAirChat();
             lastActivityRef.current = Date.now(); 
         }
     }, 5000); 
-
     return () => clearInterval(heartbeat);
   }, [isLive, isProcessing, gameContext]); 
 
@@ -161,25 +177,18 @@ const StreamSimulator = () => {
     }
   };
 
-  // --- SMART DONATION LOGIC ---
   const calculateDonationChance = (userSpeech) => {
     const lowerSpeech = userSpeech.toLowerCase();
-    // 1. Base chance: 1% (Very rare)
     let chance = 0.01; 
-
-    // 2. Interaction Bonus: If you answer a question or explain something
     const engagementTriggers = ["yes", "no", "because", "i think", "thank you", "actually", "well"];
     if (engagementTriggers.some(trigger => lowerSpeech.startsWith(trigger))) {
-        chance = 0.30; // Boost to 30% if you are engaging
+        chance = 0.30; 
     }
-    
-    // 3. Length Bonus: Short "ok" = low chance. Long explanation = high chance.
     if (userSpeech.length > 50) chance += 0.10;
-
-    console.log(`Donation Chance: ${(chance * 100).toFixed(0)}%`);
     return chance;
   };
 
+  // --- STRICTER PROMPTS HERE ---
   const processSpeechToAI = async (text) => {
     if (isProcessing) return;
     setIsProcessing(true);
@@ -189,17 +198,22 @@ const StreamSimulator = () => {
       const donationProb = calculateDonationChance(text);
 
       const systemPrompt = `
-        Simulate Twitch chat. Context: Playing "${gameContext}". User said: "${text}".
-        React naturally.
+        ROLE: You are the backend for a Twitch Chat Simulation.
+        SCENARIO: The USER input is the STREAMER speaking.
+        YOUR JOB: Generate 2-3 viewer chat messages reacting to the streamer.
         
-        DONATION RULES:
-        - Probability: ${donationProb} (Float between 0-1).
-        - If random < probability, ONE viewer sends a donation.
-        - Add "donation": "$5.00" only if donating.
-        - Donators usually thank the streamer for answering.
+        RULES:
+        1. YOU ARE THE AUDIENCE. You are NOT the streamer.
+        2. Speak TO the streamer (use "you", "he", "she", or "streamer").
+        3. Keep messages short, informal, internet-slang style.
+        4. Context: Streamer is playing "${gameContext}".
+        
+        DONATIONS:
+        - Chance: ${donationProb} (0-1).
+        - If donating, add "donation": "$20" to object.
       `;
       
-      await callOpenAI(systemPrompt, activeViewers);
+      await callOpenAI(systemPrompt, activeViewers, text);
 
     } catch (error) {
       console.error("AI Error:", error);
@@ -213,47 +227,43 @@ const StreamSimulator = () => {
   const triggerDeadAirChat = async () => {
     if (isProcessing) return;
     setIsProcessing(true);
-
     try {
       const activeViewers = viewersRef.current.sort(() => 0.5 - Math.random()).slice(0, 2); 
       const randomTopic = RANDOM_TOPICS[Math.floor(Math.random() * RANDOM_TOPICS.length)];
-
+      
       const systemPrompt = `
-        The streamer has been silent for a while. 
-        Context: Playing "${gameContext}".
-        Task: Viewers are bored. They start talking about: "${randomTopic}".
-        They are IGNORING the streamer right now.
-        NO DONATIONS ALLOWED during dead air.
+        ROLE: Twitch Chat Simulator.
+        SCENARIO: The streamer has been silent for 15+ seconds.
+        YOUR JOB: Generate viewer chatter.
+        
+        RULES:
+        1. Discuss this topic: "${randomTopic}".
+        2. Or ask "Is the streamer AFK?".
+        3. Do NOT pretend to be the streamer. Talk TO each other or ABOUT the streamer.
+        4. NO DONATIONS.
       `;
       
-      await callOpenAI(systemPrompt, activeViewers);
-
-    } catch (error) {
-      console.error("Dead Air Error:", error);
-    } finally {
-      setIsProcessing(false);
-    }
+      await callOpenAI(systemPrompt, activeViewers, "Streamer is silent...");
+    } catch (error) { console.error(error); } finally { setIsProcessing(false); }
   };
 
-  const callOpenAI = async (systemInstruction, viewers) => {
+  const callOpenAI = async (systemInstruction, viewers, userText) => {
     const userPrompt = `
-      Generate responses from these personas:
+      Streamer Said/Status: "${userText}"
+      
+      Generate responses for:
       ${JSON.stringify(viewers.map(v => ({ name: v.name, persona: v.persona.prompts })))}
       
       RETURN JSON ARRAY: [{ "user": "name", "text": "message", "donation": "$5" (optional) }]
     `;
 
     const completion = await openai.chat.completions.create({
-      messages: [
-          { role: "system", content: systemInstruction }, 
-          { role: "user", content: userPrompt }
-      ],
+      messages: [{ role: "system", content: systemInstruction }, { role: "user", content: userPrompt }],
       model: "gpt-3.5-turbo",
     });
 
     const rawContent = completion.choices[0].message.content;
     const jsonMatch = rawContent.match(/\[.*\]/s) || rawContent.match(/\{.*\}/s);
-    
     if (!jsonMatch) return;
     
     const messages = JSON.parse(jsonMatch[0]);
@@ -296,21 +306,30 @@ const StreamSimulator = () => {
         </div>
       )}
 
+      {/* HEADER */}
       <div className="w-full max-w-4xl mb-6 space-y-4">
         <div className="flex justify-between items-center p-4 bg-gray-800 rounded-xl shadow-lg border border-gray-700">
             <div className="flex items-center gap-4">
                 <div className={`w-3 h-3 rounded-full ${isLive ? 'bg-red-500 animate-pulse' : 'bg-gray-500'}`}></div>
-                <h1 className="text-xl font-bold tracking-wider">VIBE STREAM v0.9</h1>
+                <div>
+                    <h1 className="text-xl font-bold tracking-wider leading-none">VIBE STREAM</h1>
+                    <span className="text-xs text-gray-400 font-mono">{isLive ? formatTime(uptime) : "OFFLINE"}</span>
+                </div>
             </div>
-            <button 
-                onClick={() => setEnableTTS(!enableTTS)}
-                className={`flex items-center gap-2 px-3 py-1 rounded-lg border ${enableTTS ? 'bg-purple-600 border-purple-400' : 'bg-gray-700 border-gray-600'} transition-all`}
-            >
-                {enableTTS ? <Volume2 size={16}/> : <VolumeX size={16}/>}
-                <span className="text-xs font-bold">TTS</span>
-            </button>
+
+            <div className="flex items-center gap-6">
+                <div className="flex items-center gap-2 text-gray-300">
+                    <Users size={18} className="text-blue-400" />
+                    <span className="font-mono font-bold text-lg">{viewerCount.toLocaleString()}</span>
+                </div>
+                <div className="h-6 w-px bg-gray-600"></div>
+                <button onClick={() => setEnableTTS(!enableTTS)} className={`p-2 rounded-lg border transition-all ${enableTTS ? 'bg-purple-600 border-purple-400 text-white' : 'bg-gray-700 border-gray-600 text-gray-400'}`}>
+                    {enableTTS ? <Volume2 size={18}/> : <VolumeX size={18}/>}
+                </button>
+            </div>
         </div>
 
+        {/* CONTROLS */}
         <div className="flex flex-col md:flex-row gap-4 p-4 bg-gray-800/50 rounded-xl border border-gray-700">
             <div className={`flex items-center gap-2 bg-gray-900 p-2 rounded-lg border ${isLive ? 'border-gray-800 opacity-50' : 'border-gray-700'}`}>
                 <Mic size={16} className="text-purple-400" />
@@ -338,6 +357,7 @@ const StreamSimulator = () => {
         </div>
       </div>
 
+      {/* CONTENT */}
       <div className="w-full max-w-4xl grid grid-cols-1 md:grid-cols-3 gap-6 h-[600px]">
         <div className="md:col-span-2 bg-black rounded-xl border border-gray-800 relative flex flex-col items-center justify-center overflow-hidden">
           {!isLive ? (
@@ -354,7 +374,6 @@ const StreamSimulator = () => {
                      <span className="text-gray-500 text-xs font-mono flex items-center gap-1"><Clock size={10}/> AUTO-CHAT ACTIVE</span>
                      <div className="animate-pulse text-red-500 font-mono text-xs">● REC</div>
                 </div>
-                
                 <div className="bg-gray-900/80 p-4 rounded-lg backdrop-blur-sm border border-gray-700 min-h-[100px] flex items-center justify-center">
                     <p className="text-lg italic text-gray-300">
                         {transcript || <span className="text-gray-600 animate-pulse">...</span>}
@@ -371,7 +390,11 @@ const StreamSimulator = () => {
         <div className="bg-gray-900 border border-gray-800 rounded-xl flex flex-col h-full shadow-2xl overflow-hidden relative">
             <div className="bg-gray-800 p-3 border-b border-gray-700 font-bold text-sm flex items-center justify-between">
                 <span>CHAT</span>
-                <MessageSquare size={16} className="text-gray-400"/>
+                <div className="flex gap-2">
+                    <button onClick={() => setChat([])} className="text-gray-500 hover:text-red-400 transition" title="Clear Chat">
+                        <Trash2 size={14}/>
+                    </button>
+                </div>
             </div>
             <div id="chat-box" className="flex-1 overflow-y-auto p-4 space-y-3 scroll-smooth">
                 {chat.length === 0 && <div className="text-gray-600 text-center text-sm mt-10">Chat is quiet...</div>}
