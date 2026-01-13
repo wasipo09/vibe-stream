@@ -78,7 +78,6 @@ const StreamSimulator = () => {
   const [isLive, setIsLive] = useState(false);
   const [transcript, setTranscript] = useState("");
   const [chat, setChat] = useState([]);
-  const [isProcessing, setIsProcessing] = useState(false);
   const [inputLang, setInputLang] = useState('en');
   const [gameContext, setGameContext] = useState("Just Chatting");
   const [enableTTS, setEnableTTS] = useState(false);
@@ -91,7 +90,7 @@ const StreamSimulator = () => {
   const [settings, setSettings] = useState({
       toxicity: 20,       
       chatSpeed: 1000,    
-      baseDonation: 1, // Now strictly 1% chance
+      baseDonation: 1, 
       creativity: 0.8     
   });
 
@@ -99,10 +98,19 @@ const StreamSimulator = () => {
   const silenceTimer = useRef(null);
   const viewersRef = useRef([]); 
   const lastActivityRef = useRef(Date.now()); 
+  const isProcessingRef = useRef(false);
+  
+  // ⚡ FIX: Ref for scrolling
+  const chatEndRef = useRef(null);
 
   useEffect(() => {
     viewersRef.current = generateViewers(6, settings.toxicity);
   }, [settings.toxicity]);
+
+  // ⚡ FIX: Scroll to bottom whenever 'chat' state changes
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chat]);
 
   useEffect(() => {
     let interval;
@@ -118,17 +126,27 @@ const StreamSimulator = () => {
     return () => clearInterval(interval);
   }, [isLive]);
 
+  // --- DEAD AIR LOGIC (Improved) ---
   useEffect(() => {
     const heartbeat = setInterval(() => {
-        if (!isLive || isProcessing) return;
+        if (!isLive || isProcessingRef.current) return;
         const timeSinceLastActivity = Date.now() - lastActivityRef.current;
+        
+        // Check if silent for > 15 seconds
         if (timeSinceLastActivity > 15000) {
+            // ⚡ FIX: 60% chance to SKIP this cycle. 
+            // This prevents rhythmic spam. Sometimes silence is just silence.
+            if (Math.random() > 0.4) {
+                console.log("Dead Air detected... but staying quiet for realism.");
+                return;
+            }
+
             triggerDeadAirChat();
             lastActivityRef.current = Date.now(); 
         }
     }, 5000); 
     return () => clearInterval(heartbeat);
-  }, [isLive, isProcessing, gameContext]); 
+  }, [isLive, gameContext]); 
 
   useEffect(() => {
     if (chat.length > 0 && enableTTS) {
@@ -189,24 +207,15 @@ const StreamSimulator = () => {
     }
   };
 
-  // --- 🎲 NEW MATH-BASED DONATION SYSTEM ---
   const rollForDonation = (userSpeech) => {
-    // 1. Get Base Chance from Settings Slider (e.g. 1% -> 0.01)
     let chance = settings.baseDonation / 100;
-    
-    // 2. Engagement Bonus
     const lowerSpeech = userSpeech.toLowerCase();
     const engagementTriggers = ["yes", "no", "because", "i think", "thank you", "actually", "well"];
     if (engagementTriggers.some(trigger => lowerSpeech.startsWith(trigger))) {
-        chance += 0.20; // Add 20% bonus if engaging
+        chance += 0.20; 
     }
-    
-    // 3. Roll the Dice
     const roll = Math.random();
-    console.log(`Donation Roll: ${roll.toFixed(2)} vs Chance: ${chance.toFixed(2)}`);
-    
     if (roll < chance) {
-        // Return random amount
         const amounts = ["$5.00", "$10.00", "$20.00", "$50.00", "$4.20", "$69.00"];
         return amounts[Math.floor(Math.random() * amounts.length)];
     }
@@ -214,13 +223,12 @@ const StreamSimulator = () => {
   };
 
   const processSpeechToAI = async (text) => {
-    if (isProcessing) return;
-    setIsProcessing(true);
+    if (isProcessingRef.current) return;
+    isProcessingRef.current = true;
     
     try {
       const activeViewers = viewersRef.current.sort(() => 0.5 - Math.random()).slice(0, 3);
       
-      // We do NOT tell AI about donation chance anymore. We just ask for text.
       const systemPrompt = `
         ROLE: Twitch Chat Simulator.
         USER: Streamer. AI: Audience.
@@ -228,36 +236,41 @@ const StreamSimulator = () => {
         
         RULES: 
         1. Generate 3 distinct messages.
-        2. Use the EXACT usernames provided.
-        3. Speak TO the streamer.
-        4. Keep it short and slangy.
+        2. ENSURE VARIETY: One positive, one sarcastic/troll, one random/question.
+        3. Do NOT have them say the same thing.
+        4. Speak TO the streamer.
+        5. Keep it short and slangy.
       `;
       
-      await callOpenAI(systemPrompt, activeViewers, text, true); // true = allow donations check
+      await callOpenAI(systemPrompt, activeViewers, text, true); 
 
     } catch (error) {
       console.error("AI Error:", error);
     } finally {
-      setIsProcessing(false);
+      isProcessingRef.current = false;
       setTranscript(""); 
       lastActivityRef.current = Date.now();
     }
   };
 
   const triggerDeadAirChat = async () => {
-    if (isProcessing) return;
-    setIsProcessing(true);
+    if (isProcessingRef.current) return;
+    isProcessingRef.current = true;
+
     try {
-      const activeViewers = viewersRef.current.sort(() => 0.5 - Math.random()).slice(0, 2); 
+      // ⚡ FIX: Randomize how many people speak during dead air (1 or 2, not always 2)
+      const count = Math.random() > 0.5 ? 1 : 2;
+      const activeViewers = viewersRef.current.sort(() => 0.5 - Math.random()).slice(0, count);
+      
       const randomTopic = RANDOM_TOPICS[Math.floor(Math.random() * RANDOM_TOPICS.length)];
       const systemPrompt = `
         ROLE: Twitch Chat Sim.
         SCENARIO: Streamer is silent (15s+).
-        TASK: Chat with each other about "${randomTopic}".
+        TASK: Chat about "${randomTopic}".
         NO DONATIONS.
       `;
-      await callOpenAI(systemPrompt, activeViewers, "Streamer is silent...", false); // false = no donations
-    } catch (error) { console.error(error); } finally { setIsProcessing(false); }
+      await callOpenAI(systemPrompt, activeViewers, "Streamer is silent...", false); 
+    } catch (error) { console.error(error); } finally { isProcessingRef.current = false; }
   };
 
   const callOpenAI = async (systemInstruction, viewers, userText, allowDonations) => {
@@ -269,7 +282,7 @@ const StreamSimulator = () => {
 
     const completion = await openai.chat.completions.create({
       messages: [{ role: "system", content: systemInstruction }, { role: "user", content: userPrompt }],
-      model: "gpt-3.5-turbo",
+      model: "gpt-4o-mini",
       temperature: settings.creativity, 
     });
 
@@ -280,41 +293,35 @@ const StreamSimulator = () => {
     let parsed = JSON.parse(jsonMatch[0]);
     if (!Array.isArray(parsed)) parsed = [parsed];
     
-    // --- 🎲 INJECT DONATION HERE ---
-    // If allowed, roll ONE dice for the whole batch
     let donationAmount = null;
     if (allowDonations) {
         donationAmount = rollForDonation(userText);
     }
 
     parsed.forEach((msg, i) => {
+      // ⚡ FIX: Add a small random jitter to the timing so they don't appear perfectly linear
+      const randomJitter = Math.floor(Math.random() * 500); 
+      const delay = (i * settings.chatSpeed) + randomJitter;
+
       setTimeout(() => {
         const viewer = viewersRef.current.find(v => v.name === msg.user) 
                     || viewersRef.current.find(v => msg.user.includes(v.name))
                     || viewersRef.current[i % viewersRef.current.length];
 
-        // If dice rolled a donation, give it to the FIRST message in the batch
-        let isDonation = false;
         if (donationAmount && i === 0) {
-            isDonation = true;
-            msg.donation = donationAmount; // Attach to object
+            msg.donation = donationAmount; 
             playDonationSound();
             setLatestDonation({ user: msg.user, amount: donationAmount, text: msg.text });
         }
 
         setChat(prev => [...prev, { ...msg, color: viewer ? viewer.color : "text-gray-400" }]);
-        scrollToBottom();
-      }, i * settings.chatSpeed); 
+        // Scroll is now handled by useEffect
+      }, delay); 
     });
   };
 
   const addSystemMessage = (text) => {
     setChat(prev => [...prev, { user: "SYSTEM", text, color: "text-gray-500", isSystem: true }]);
-  };
-
-  const scrollToBottom = () => {
-    const chatBox = document.getElementById("chat-box");
-    if (chatBox) chatBox.scrollTop = chatBox.scrollHeight;
   };
 
   return (
@@ -504,6 +511,8 @@ const StreamSimulator = () => {
                         )}
                     </div>
                 ))}
+                {/* ⚡ FIX: Invisible element to force scroll */}
+                <div ref={chatEndRef} />
             </div>
             <div className="p-3 bg-gray-800 border-t border-gray-700">
                 <input disabled placeholder="Chat is read-only" className="w-full bg-gray-900 border border-gray-700 rounded-md py-2 px-3 text-sm text-gray-500 cursor-not-allowed"/>
